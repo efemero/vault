@@ -1,9 +1,9 @@
 #[macro_use]
 extern crate clap;
 use async_jsonrpc_client::HttpTransport;
-use ethabi::Uint;
+use ethabi::{Address, Uint};
 use std::error::Error;
-use vault::{CdpManager, HttpBlockchainReader, Median, Saver, Spot};
+use vault::{CdpManager, HttpBlockchainReader, Median, Pair, Saver, Spot};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -23,6 +23,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let vault_id = value_t_or_exit!(matches.value_of("VAULT_ID"), u128);
     let node = matches.value_of("NODE").unwrap();
     let next = matches.is_present("next");
+
     let transport = HttpTransport::new(node);
     let reader: HttpBlockchainReader = HttpBlockchainReader::new(transport)?;
     let saver = Saver::new(&reader)?;
@@ -34,20 +35,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let median_address = spot.get_median_address(&ilk_id).await?;
     let median = Median::new(&reader, median_address)?;
     let price = median.get_price(next).await?;
-    let dai_value = vault.get_dai_value(price)?;
-    let col_value = vault.get_col_value(price)?;
-    println!(
-        "price: {}",
-        price.as_u128() as f64 / Uint::exp10(18).as_u128() as f64
-    );
+    let price_f64 = price.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
+    let wbtc_eth_pair_address: Address = "Bb2b8038a1640196FbE3e38816F3e67Cba72D940".parse()?;
+    let wbtc_eth_pair = Pair::new(&reader, wbtc_eth_pair_address)?;
+    let wbtc_price = wbtc_eth_pair.get_price_0().await?;
+    let dai_value = vault.get_dai_value(price)?.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
+    let eur_value = dai_value / 1.2271;
+    let col_value = vault.get_col_value(price)?.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
+    let btc_value = col_value * wbtc_price;
+    println!("price: {}", price_f64);
     println!("net value:");
-    println!(
-        "\t{} dai",
-        dai_value.as_u128() as f64 / Uint::exp10(18).as_u128() as f64
-    );
-    println!(
-        "\t{} eth",
-        col_value.as_u128() as f64 / Uint::exp10(18).as_u128() as f64
-    );
+    println!("\t{} dai", dai_value);
+    println!("\t{} eur", eur_value);
+    println!("\t{} btc", btc_value);
+    println!("\t{} eth", col_value);
     Ok(())
 }
