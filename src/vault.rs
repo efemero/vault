@@ -43,4 +43,83 @@ impl Vault {
             debt: self.debt,
         })
     }
+
+    pub fn get_up_price(&self) -> Result<Uint, Box<dyn Error>> {
+        let up_price = self.debt * self.max_ratio / self.collateral;
+        Ok(up_price)
+    }
+
+    pub fn get_down_price(&self) -> Result<Uint, Box<dyn Error>> {
+        let down_price = self.debt * self.min_ratio / self.collateral;
+        Ok(down_price)
+    }
+
+    pub fn get_up_dai_to_draw(&self) -> Result<Uint, Box<dyn Error>> {
+        let up_price = self.get_up_price()?;
+        let dai_value = self.get_dai_value(up_price)?;
+        let final_debt = dai_value * Uint::exp10(18) / (self.boost_ratio - Uint::exp10(18));
+        let dai_to_draw = final_debt - self.debt;
+        Ok(dai_to_draw)
+    }
+
+    pub fn get_down_dai_to_payback(&self) -> Result<Uint, Box<dyn Error>> {
+        let down_price = self.get_down_price()?;
+        let dai_value = self.get_dai_value(down_price)?;
+        let final_debt = dai_value * Uint::exp10(18) / (self.repay_ratio - Uint::exp10(18));
+        let dai_to_payback = self.debt - final_debt;
+        Ok(dai_to_payback)
+    }
+
+    pub fn get_up_vault(&self) -> Result<Vault, Box<dyn Error>> {
+        let mut up_vault = self.clone();
+        let dai_to_draw = up_vault.get_up_dai_to_draw()?;
+        let up_price = up_vault.get_up_price()?;
+        up_vault.collateral = up_vault.collateral + (dai_to_draw * Uint::exp10(18) / up_price);
+        up_vault.debt = up_vault.debt + dai_to_draw;
+        Ok(up_vault)
+    }
+
+    pub fn get_down_vault(&self) -> Result<Vault, Box<dyn Error>> {
+        let mut down_vault = self.clone();
+        let dai_to_payback = down_vault.get_down_dai_to_payback()?;
+        let down_price = down_vault.get_down_price()?;
+        down_vault.collateral =
+            down_vault.collateral - (dai_to_payback * Uint::exp10(18) / down_price);
+        down_vault.debt = down_vault.debt - dai_to_payback;
+        Ok(down_vault)
+    }
+
+    pub fn predict_vault(&self, price: Uint, friction: f64) -> Result<Vault, Box<dyn Error>> {
+        let up_price = self.get_up_price()?;
+        let down_price = self.get_down_price()?;
+        let mut vault = self.clone();
+        if price > up_price {
+            vault = vault.get_up_vault()?.predict_vault(price, friction)?;
+        }
+        if price < down_price {
+            vault = vault.get_down_vault()?.predict_vault(price, friction)?;
+        }
+        vault.debt = Uint::from((vault.debt.as_u128() as f64 * (1.0 - friction)) as u128);
+        vault.collateral =
+            Uint::from((vault.collateral.as_u128() as f64 * (1.0 - friction)) as u128);
+        Ok(vault)
+    }
+
+    pub fn show(&self, price: Uint, btc_price: f64) -> Result<(), Box<dyn Error>> {
+        let price_f64 = price.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
+        let dai_value =
+            self.get_dai_value(price)?.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
+        let eur_value = dai_value / 1.2271;
+        let col_value =
+            self.get_col_value(price)?.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
+        let btc_value = col_value * btc_price;
+
+        println!("price: {}", price_f64);
+        println!("net value:");
+        println!("\t{} dai", dai_value);
+        println!("\t{} eur", eur_value);
+        println!("\t{} btc", btc_value);
+        println!("\t{} eth", col_value);
+        Ok(())
+    }
 }
