@@ -46,6 +46,10 @@ impl<'a> Saver<'a> {
 
         let vault = Vault {
             subscribed: subscribed.unwrap(),
+            //min_ratio: Uint::from(160) * Uint::exp10(16),
+            //max_ratio: Uint::from(220) * Uint::exp10(16),
+            //repay_ratio: Uint::from(180) * Uint::exp10(16),
+            //boost_ratio: Uint::from(180) * Uint::exp10(16),
             min_ratio: min_ratio.unwrap(),
             max_ratio: max_ratio.unwrap(),
             repay_ratio: repay_ratio.unwrap(),

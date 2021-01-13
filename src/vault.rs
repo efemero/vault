@@ -113,13 +113,31 @@ impl Vault {
         let col_value =
             self.get_col_value(price)?.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
         let btc_value = col_value * btc_price;
+        let down_price = self.get_down_price()?.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
+        let up_price = self.get_up_price()?.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
+        let max_ratio_pc = self.max_ratio.as_u128() as f64 / Uint::exp10(16).as_u128() as f64;
+        let min_ratio_pc = self.min_ratio.as_u128() as f64 / Uint::exp10(16).as_u128() as f64;
+        let boost_ratio_pc = self.boost_ratio.as_u128() as f64 / Uint::exp10(16).as_u128() as f64;
+        let repay_ratio_pc = self.repay_ratio.as_u128() as f64 / Uint::exp10(16).as_u128() as f64;
 
-        println!("price: {}", price_f64);
+        let col_dai =
+            self.collateral.as_u128() as f64 * price_f64 / Uint::exp10(18).as_u128() as f64;
+        let debt = self.debt.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
+        let ratio_pc = col_dai * 100.0 / debt;
+        println!("{:<11}: {:>9.2} ({:.2}%)", "price", price_f64, ratio_pc);
+        println!(
+            "{:<11}: {:>9.2} ({}% -> {}%)",
+            "down price", down_price, min_ratio_pc, repay_ratio_pc
+        );
+        println!(
+            "{:<11}: {:>9.2} ({}% -> {}%) ",
+            "up price", up_price, max_ratio_pc, boost_ratio_pc
+        );
         println!("net value:");
-        println!("\t{} dai", dai_value);
-        println!("\t{} eur", eur_value);
-        println!("\t{} btc", btc_value);
-        println!("\t{} eth", col_value);
+        println!("{:>15.2} dai", dai_value);
+        println!("{:>15.2} eur", eur_value);
+        println!("{:>15.2} btc", btc_value);
+        println!("{:>15.2} eth", col_value);
         Ok(())
     }
 }

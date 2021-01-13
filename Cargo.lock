@@ -1751,7 +1751,7 @@ checksum = "05e42f7c18b8f902290b009cde6d651262f956c98bc51bca4cd1d511c9cd85c7"
 
 [[package]]
 name = "vault"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-jsonrpc-client",
  "async-trait",

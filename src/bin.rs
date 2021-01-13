@@ -9,13 +9,13 @@ use vault::{CdpManager, HttpBlockchainReader, Median, Pair, Saver, Spot};
 async fn main() -> Result<(), Box<dyn Error>> {
     let matches = clap_app!(
         myapp =>
-        (version: "0.1")
+        (version: "0.2")
         (author: "François Bastien <fmrbastien@gmail.com>")
         (about: "Get informations about your makerDAO vault.")
         (@arg NODE: -n --node +takes_value default_value("localhost:8545") "Ethereum node to call" )
         (@arg next: --next "if present, computations are based on the next price" )
         (@arg price: -p --price +takes_value  "if present, computations are based on this price (DAI / ETH)" )
-        (@arg friction: -f --friction +takes_value  default_value("0.01") "The friction takes in account the transactions fees, and market friction." )
+        (@arg friction: -f --friction +takes_value  default_value("0.03") "The friction takes in account the transactions fees, and market friction." )
         (@arg VAULT_ID: +required "The ID of the vault to check" )
         )
         .get_matches();
