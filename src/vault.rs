@@ -1,6 +1,7 @@
 use super::erc_20::Erc20Token;
 use ethabi::{Address, Uint};
 use std::error::Error;
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct Vault {
@@ -54,11 +55,19 @@ impl Vault {
         Ok(down_price)
     }
 
+    pub fn get_liquidation_price(&self) -> Result<Uint, Box<dyn Error>> {
+        let liquidation_price = self.debt * Uint::from(150) * Uint::exp10(16) / self.collateral;
+        Ok(liquidation_price)
+    }
+
     pub fn get_up_dai_to_draw(&self) -> Result<Uint, Box<dyn Error>> {
         let up_price = self.get_up_price()?;
         let dai_value = self.get_dai_value(up_price)?;
         let final_debt = dai_value * Uint::exp10(18) / (self.boost_ratio - Uint::exp10(18));
-        let dai_to_draw = final_debt - self.debt;
+        let mut dai_to_draw = Uint::zero();
+        if final_debt > self.debt {
+            dai_to_draw = final_debt - self.debt;
+        }
         Ok(dai_to_draw)
     }
 
@@ -70,12 +79,17 @@ impl Vault {
         Ok(dai_to_payback)
     }
 
-    pub fn get_up_vault(&self) -> Result<Vault, Box<dyn Error>> {
+    pub fn get_up_vault(&self, friction: f64) -> Result<Vault, Box<dyn Error>> {
         let mut up_vault = self.clone();
-        let dai_to_draw = up_vault.get_up_dai_to_draw()?;
-        let up_price = up_vault.get_up_price()?;
-        up_vault.collateral = up_vault.collateral + (dai_to_draw * Uint::exp10(18) / up_price);
-        up_vault.debt = up_vault.debt + dai_to_draw;
+        let dai_to_draw = self.get_up_dai_to_draw()?;
+        if dai_to_draw != Uint::zero() {
+            let up_price = self.get_up_price()?;
+            up_vault.collateral = up_vault.collateral + (dai_to_draw * Uint::exp10(18) / up_price);
+            up_vault.collateral =
+                Uint::from((up_vault.collateral.as_u128() as f64 * (1.0 - friction)) as u128);
+            up_vault.debt = up_vault.debt + dai_to_draw;
+            up_vault.debt = Uint::from((up_vault.debt.as_u128() as f64 * (1.0 - friction)) as u128);
+        }
         Ok(up_vault)
     }
 
@@ -94,14 +108,20 @@ impl Vault {
         let down_price = self.get_down_price()?;
         let mut vault = self.clone();
         if price > up_price {
-            vault = vault.get_up_vault()?.predict_vault(price, friction)?;
+            vault = self.get_up_vault(friction)?;
+            let new_up_price = vault.get_up_price()?;
+            let increase = new_up_price.as_u128() as f64 / up_price.as_u128() as f64;
+            if increase < 1.01 {
+                return Err(Box::new(VaultError(String::from("increase too low"))));
+            }
+            vault = vault.predict_vault(price, friction)?;
         }
         if price < down_price {
             vault = vault.get_down_vault()?.predict_vault(price, friction)?;
+            vault.debt = Uint::from((vault.debt.as_u128() as f64 * (1.0 - friction)) as u128);
+            vault.collateral =
+                Uint::from((vault.collateral.as_u128() as f64 * (1.0 - friction)) as u128);
         }
-        vault.debt = Uint::from((vault.debt.as_u128() as f64 * (1.0 - friction)) as u128);
-        vault.collateral =
-            Uint::from((vault.collateral.as_u128() as f64 * (1.0 - friction)) as u128);
         Ok(vault)
     }
 
@@ -115,6 +135,8 @@ impl Vault {
         let btc_value = col_value * btc_price;
         let down_price = self.get_down_price()?.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
         let up_price = self.get_up_price()?.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
+        let liquidation_price =
+            self.get_liquidation_price()?.as_u128() as f64 / Uint::exp10(18).as_u128() as f64;
         let max_ratio_pc = self.max_ratio.as_u128() as f64 / Uint::exp10(16).as_u128() as f64;
         let min_ratio_pc = self.min_ratio.as_u128() as f64 / Uint::exp10(16).as_u128() as f64;
         let boost_ratio_pc = self.boost_ratio.as_u128() as f64 / Uint::exp10(16).as_u128() as f64;
@@ -130,14 +152,30 @@ impl Vault {
             "down price", down_price, min_ratio_pc, repay_ratio_pc
         );
         println!(
-            "{:<11}: {:>9.2} ({}% -> {}%) ",
+            "{:<11}: {:>9.2} ({}% -> {}%)",
             "up price", up_price, max_ratio_pc, boost_ratio_pc
         );
+        println!("{:<11}: {:>9.2} (150%)", "liquidation", liquidation_price);
         println!("net value:");
         println!("{:>15.2} dai", dai_value);
         println!("{:>15.2} eur", eur_value);
         println!("{:>15.2} btc", btc_value);
         println!("{:>15.2} eth", col_value);
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VaultError(pub String);
+
+impl fmt::Display for VaultError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl Error for VaultError {
+    fn description(&self) -> &str {
+        &self.0
     }
 }
